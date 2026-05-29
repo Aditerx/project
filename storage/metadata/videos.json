@@ -1,13 +1,16 @@
 [
   {
     "id": "vid_001",
-    "title": "Internal Briefing",
-    "description": "Confidential media sample prepared for the secure vault experience.",
+    "title": "Internal",
+    "description": "Confidential media sample prepared for the secure experience.",
     "thumbnail": "/storage/thumbnails/internal-briefing.svg",
-    "videoUrl": "/storage/videos/internal-briefing.mp4",
+    "videoUrl": "/storage/videos/internal-36570dc6-a86b-4b30-921f-5c5a65f8a336.mp4",
     "storageProvider": "local",
     "category": "Research",
-    "tags": ["internal", "secure", "briefing"],
+    "tags": [
+      "secure",
+      "briefing"
+    ],
     "featured": true,
     "sources": [
       {
@@ -18,7 +21,7 @@
       }
     ],
     "createdAt": "2026-05-29T00:00:00.000Z",
-    "updatedAt": "2026-05-29T00:00:00.000Z"
+    "updatedAt": "2026-05-29T07:21:22.859Z"
   },
   {
     "id": "vid_002",
@@ -28,7 +31,11 @@
     "videoUrl": "/storage/videos/response-drill.webm",
     "storageProvider": "local",
     "category": "Operations",
-    "tags": ["drill", "response", "training"],
+    "tags": [
+      "drill",
+      "response",
+      "training"
+    ],
     "featured": false,
     "sources": [
       {
@@ -49,7 +56,11 @@
     "videoUrl": "/storage/videos/market-intelligence.mp4",
     "storageProvider": "local",
     "category": "Distribution",
-    "tags": ["distribution", "insights", "featured"],
+    "tags": [
+      "distribution",
+      "insights",
+      "featured"
+    ],
     "featured": true,
     "sources": [
       {
@@ -63,4 +74,3 @@
     "updatedAt": "2026-05-29T00:00:00.000Z"
   }
 ]
-
