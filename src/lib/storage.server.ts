@@ -4,7 +4,20 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { BRAND_NAME } from "./brand";
 
 export const WORKSPACE_ROOT = process.cwd();
-export const STORAGE_ROOT = path.join(WORKSPACE_ROOT, "storage");
+const LOCAL_DEVELOPMENT_STORAGE_ROOT = path.resolve(WORKSPACE_ROOT, "..", "ip-protection-storage");
+const VERCEL_RUNTIME_STORAGE_ROOT = path.join("/tmp", "ip-protection-storage");
+
+function resolveConfiguredStorageRoot() {
+  const configuredRoot = process.env.MEDIA_STORAGE_PATH?.trim();
+  const defaultRoot =
+    process.env.VERCEL === "1" || process.env.NODE_ENV === "production"
+      ? VERCEL_RUNTIME_STORAGE_ROOT
+      : LOCAL_DEVELOPMENT_STORAGE_ROOT;
+  const root = configuredRoot && configuredRoot.length > 0 ? configuredRoot : defaultRoot;
+  return path.resolve(root);
+}
+
+export const STORAGE_ROOT = resolveConfiguredStorageRoot();
 export const STORAGE_USERS_DIR = path.join(STORAGE_ROOT, "users");
 export const STORAGE_METADATA_DIR = path.join(STORAGE_ROOT, "metadata");
 export const STORAGE_VIDEOS_DIR = path.join(STORAGE_ROOT, "videos");

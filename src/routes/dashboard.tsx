@@ -30,6 +30,63 @@ type MediaResponse = {
   };
 };
 
+function extractResponseError(text: string, fallback: string) {
+  if (!text) return fallback;
+
+  try {
+    const parsed = JSON.parse(text) as { error?: string; message?: string };
+    return parsed.message ?? parsed.error ?? fallback;
+  } catch {
+    return text || fallback;
+  }
+}
+
+function uploadFormDataWithProgress<T>({
+  endpoint,
+  method,
+  body,
+  onProgress,
+}: {
+  endpoint: string;
+  method: "POST" | "PUT" | "PATCH";
+  body: FormData;
+  onProgress?: (progress: number) => void;
+}): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, endpoint);
+    xhr.responseType = "text";
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      onProgress?.(Math.round((event.loaded / event.total) * 100));
+    };
+
+    xhr.onload = () => {
+      const responseText = xhr.responseText ?? "";
+
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(
+          new Error(
+            extractResponseError(responseText, xhr.statusText || `Request failed with status ${xhr.status}`),
+          ),
+        );
+        return;
+      }
+
+      try {
+        resolve((responseText ? JSON.parse(responseText) : null) as T);
+      } catch {
+        reject(new Error("Unable to parse the upload response."));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("Network error while uploading."));
+    xhr.onabort = () => reject(new Error("Upload cancelled."));
+    xhr.send(body);
+  });
+}
+
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
     meta: [
@@ -300,6 +357,7 @@ function AssetEditor({
 }) {
   const formRef = useRef<HTMLFormElement | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
   const mode = selectedVideo ? "update" : "create";
 
@@ -314,9 +372,12 @@ function AssetEditor({
 
       const endpoint = selectedVideo ? `/api/media/${selectedVideo.id}` : "/api/media";
       const method = selectedVideo ? "PUT" : "POST";
-      const response = await fetchJson<{ ok: true; video: VideoRecord }>(endpoint, {
+      setUploadProgress(0);
+      const response = await uploadFormDataWithProgress<{ ok: true; video: VideoRecord }>({
+        endpoint,
         method,
         body: formData,
+        onProgress: setUploadProgress,
       });
 
       await onSaved(
@@ -326,6 +387,7 @@ function AssetEditor({
     } catch (error) {
       onError(error instanceof Error ? error.message : "Unable to save asset.");
     } finally {
+      setUploadProgress(null);
       setIsSubmitting(false);
     }
   };
@@ -445,6 +507,20 @@ function AssetEditor({
             <li>Thumbnail formats: JPG, PNG, WebP, or SVG</li>
             <li>Files are stored locally today and can move to a cloud provider later</li>
           </ul>
+          {uploadProgress !== null && (
+            <div className="mt-4 rounded-xl border border-border bg-background/80 p-3">
+              <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground">
+                <span>Upload progress</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between gap-3">

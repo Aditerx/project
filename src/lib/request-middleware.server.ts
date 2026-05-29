@@ -1,14 +1,10 @@
 import { createMiddleware } from "@tanstack/react-start";
-import path from "node:path";
-import { readFile, stat } from "node:fs/promises";
 
 import { BRAND_NAME } from "./brand";
 import {
   clearSessionCookie,
-  createSessionCookie,
   getSessionFromRequest,
   loginWithPassword,
-  verifySessionToken,
 } from "./auth.server";
 import {
   ensureStorageLayout,
@@ -21,7 +17,6 @@ import {
   listVideos,
   updateVideoFromForm,
 } from "./media.server";
-import { SESSION_COOKIE_NAME } from "./session";
 
 function jsonResponse(payload: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(payload, null, 2), {
@@ -48,86 +43,6 @@ function isHiddenRoute(pathname: string) {
 
 function isAdminOnlyPath(pathname: string) {
   return pathname === "/dashboard" || pathname.startsWith("/dashboard/");
-}
-
-function mimeTypeForPath(filePath: string) {
-  const ext = path.extname(filePath).toLowerCase();
-  switch (ext) {
-    case ".mp4":
-      return "video/mp4";
-    case ".webm":
-      return "video/webm";
-    case ".svg":
-      return "image/svg+xml";
-    case ".png":
-      return "image/png";
-    case ".jpg":
-    case ".jpeg":
-      return "image/jpeg";
-    case ".webp":
-      return "image/webp";
-    case ".json":
-      return "application/json; charset=utf-8";
-    case ".txt":
-      return "text/plain; charset=utf-8";
-    default:
-      return "application/octet-stream";
-  }
-}
-
-async function serveStorageFile(request: Request, pathname: string) {
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    return new Response("Method Not Allowed", { status: 405 });
-  }
-
-  const relativePath = pathname.replace(/^\/storage\//, "");
-  if (!relativePath) return new Response("Not Found", { status: 404 });
-
-  const firstSegment = relativePath.split("/")[0];
-  if (firstSegment === "users" || firstSegment === "metadata") {
-    return new Response("Not Found", { status: 404 });
-  }
-
-  const absolutePath = resolveStoragePath(relativePath);
-  try {
-    const fileStat = await stat(absolutePath);
-    if (!fileStat.isFile()) return new Response("Not Found", { status: 404 });
-
-    const fileBytes = await readFile(absolutePath);
-    const headers = new Headers({
-      "content-type": mimeTypeForPath(absolutePath),
-      "content-length": `${fileBytes.byteLength}`,
-      "accept-ranges": "bytes",
-      "cache-control": "public, max-age=300",
-    });
-
-    const rangeHeader = request.headers.get("range");
-    if (rangeHeader && rangeHeader.startsWith("bytes=")) {
-      const [startStr, endStr] = rangeHeader.replace("bytes=", "").split("-");
-      const start = startStr ? Number(startStr) : 0;
-      const end = endStr ? Number(endStr) : fileBytes.byteLength - 1;
-
-      if (Number.isNaN(start) || Number.isNaN(end) || start > end || end >= fileBytes.byteLength) {
-        return new Response("Requested Range Not Satisfiable", {
-          status: 416,
-          headers: { "content-range": `bytes */${fileBytes.byteLength}` },
-        });
-      }
-
-      const slice = fileBytes.slice(start, end + 1);
-      headers.set("content-range", `bytes ${start}-${end}/${fileBytes.byteLength}`);
-      headers.set("content-length", `${slice.byteLength}`);
-      return new Response(slice, { status: 206, headers });
-    }
-
-    if (request.method === "HEAD") {
-      return new Response(null, { status: 200, headers });
-    }
-
-    return new Response(fileBytes, { status: 200, headers });
-  } catch {
-    return new Response("Not Found", { status: 404 });
-  }
 }
 
 async function handleAuthLogin(request: Request) {
@@ -234,13 +149,6 @@ async function handleMediaRequest(request: Request, pathname: string) {
 export const requestMiddleware = createMiddleware({ type: "request" }).server(
   async ({ request, pathname, next }) => {
     await ensureStorageLayout();
-
-    // Public binary asset delivery is owned by the middleware so the app can
-    // keep its dev storage structure in a single place without exposing private
-    // JSON files or depending on a separate static asset server.
-    if (pathname.startsWith("/storage/")) {
-      return serveStorageFile(request, pathname);
-    }
 
     if (pathname === "/api/auth/login" && request.method === "POST") {
       return handleAuthLogin(request);

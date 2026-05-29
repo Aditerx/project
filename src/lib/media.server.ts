@@ -1,6 +1,9 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 import {
   createSeedThumbnailSvg,
@@ -9,23 +12,21 @@ import {
   formatBrandPath,
   normalizeSafeFileName,
   readJsonFile,
-  resolvePublicStorageUrl,
   resolveStoragePath,
   writeJsonFile,
   STORAGE_METADATA_FILE,
 } from "./storage.server";
 
-import { getSessionFromRequest } from "./auth.server";
 import type {
   MediaStorageProviderName,
   VideoRecord,
-  VideoSource,
 } from "./media.types";
 
 export interface StorageUploadInput {
   file: File;
   kind: "video" | "thumbnail";
   hint?: string;
+  onProgress?: (uploadedBytes: number, totalBytes: number) => void;
 }
 
 export interface StorageUploadResult {
@@ -43,33 +44,98 @@ export interface StorageProvider {
   getUrl(path: string): string;
 }
 
-const MAX_VIDEO_BYTES = 1024 * 1024 * 500;
+const DEFAULT_MAX_VIDEO_BYTES = 10 * 1024 * 1024 * 1024;
+const configuredMaxVideoBytes = Number(process.env.MEDIA_MAX_VIDEO_BYTES ?? DEFAULT_MAX_VIDEO_BYTES);
+const MAX_VIDEO_BYTES = Number.isFinite(configuredMaxVideoBytes) && configuredMaxVideoBytes > 0
+  ? configuredMaxVideoBytes
+  : DEFAULT_MAX_VIDEO_BYTES;
 const MAX_THUMBNAIL_BYTES = 1024 * 1024 * 10;
 const ALLOWED_VIDEO_TYPES = new Set(["video/mp4", "video/webm"]);
 const ALLOWED_VIDEO_EXTENSIONS = new Set([".mp4", ".webm"]);
 const ALLOWED_THUMBNAIL_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/svg+xml"]);
 const ALLOWED_THUMBNAIL_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".svg"]);
 
+function describeLimit(bytes: number) {
+  const gigabyte = 1024 * 1024 * 1024;
+  const megabyte = 1024 * 1024;
+
+  if (bytes >= gigabyte && bytes % gigabyte === 0) {
+    return `${bytes / gigabyte} GB`;
+  }
+
+  if (bytes >= gigabyte) {
+    return `${(bytes / gigabyte).toFixed(1)} GB`;
+  }
+
+  if (bytes >= megabyte && bytes % megabyte === 0) {
+    return `${bytes / megabyte} MB`;
+  }
+
+  return `${bytes} bytes`;
+}
+
+async function streamFileToPath({
+  file,
+  targetPath,
+  maxBytes,
+  onProgress,
+}: {
+  file: File;
+  targetPath: string;
+  maxBytes: number;
+  onProgress?: (uploadedBytes: number, totalBytes: number) => void;
+}) {
+  const totalBytes = file.size;
+  const tempPath = `${targetPath}.uploading`;
+
+  await mkdir(path.dirname(targetPath), { recursive: true });
+
+  let uploadedBytes = 0;
+  const byteLimiter = new Transform({
+    transform(chunk, _encoding, callback) {
+      uploadedBytes += chunk.length;
+      if (uploadedBytes > maxBytes) {
+        callback(new Error(`File exceeds the ${describeLimit(maxBytes)} upload limit.`));
+        return;
+      }
+
+      onProgress?.(uploadedBytes, totalBytes);
+      callback(null, chunk);
+    },
+  });
+
+  const source = Readable.fromWeb(file.stream());
+  const destination = createWriteStream(tempPath, { flags: "wx" });
+
+  try {
+    await pipeline(source, byteLimiter, destination);
+    await rename(tempPath, targetPath);
+  } catch (error) {
+    await unlink(tempPath).catch(() => undefined);
+    throw error;
+  }
+
+  return uploadedBytes || totalBytes;
+}
+
 export class LocalStorageProvider implements StorageProvider {
   provider: MediaStorageProviderName = "local";
 
-  async upload({ file, kind, hint }: StorageUploadInput): Promise<StorageUploadResult> {
-    const arrayBuffer = await file.arrayBuffer();
-    const bytes = arrayBuffer.byteLength;
+  async upload({ file, kind, hint, onProgress }: StorageUploadInput): Promise<StorageUploadResult> {
     const extension = path.extname(file.name).toLowerCase();
 
     if (kind === "video") {
       if (!ALLOWED_VIDEO_TYPES.has(file.type) || !ALLOWED_VIDEO_EXTENSIONS.has(extension)) {
         throw new Error("Only MP4 and WebM video uploads are allowed.");
       }
-      if (bytes > MAX_VIDEO_BYTES) {
-        throw new Error("Video files must be 500 MB or smaller.");
+      if (file.size > MAX_VIDEO_BYTES) {
+        throw new Error(`Video files must be ${describeLimit(MAX_VIDEO_BYTES)} or smaller.`);
       }
     } else {
       if (!ALLOWED_THUMBNAIL_TYPES.has(file.type) || !ALLOWED_THUMBNAIL_EXTENSIONS.has(extension)) {
         throw new Error("Only JPG, PNG, WebP, or SVG thumbnail uploads are allowed.");
       }
-      if (bytes > MAX_THUMBNAIL_BYTES) {
+      if (file.size > MAX_THUMBNAIL_BYTES) {
         throw new Error("Thumbnail files must be 10 MB or smaller.");
       }
     }
@@ -78,7 +144,12 @@ export class LocalStorageProvider implements StorageProvider {
     const uniqueName = `${safeBaseName || "asset"}-${crypto.randomUUID()}${extension || (kind === "video" ? ".mp4" : ".png")}`;
     const targetPath = resolveStoragePath(kind === "video" ? "videos" : "thumbnails", uniqueName);
 
-    await writeFile(targetPath, Buffer.from(arrayBuffer));
+    const bytes = await streamFileToPath({
+      file,
+      targetPath,
+      maxBytes: kind === "video" ? MAX_VIDEO_BYTES : MAX_THUMBNAIL_BYTES,
+      onProgress,
+    });
 
     return {
       provider: this.provider,

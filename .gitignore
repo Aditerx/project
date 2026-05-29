@@ -33,3 +33,8 @@ dist-ssr
 
 .vercel
 .env*
+
+/storage/videos
+/storage/thumbnails
+storage-runtime/
+ip-protection-storage/

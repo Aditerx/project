@@ -4,6 +4,7 @@ import { Moon, Sun, Shield, Menu, X } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { motion, AnimatePresence } from "motion/react";
 import { BRAND_NAME } from "@/lib/brand";
+import { useAuthSession } from "@/hooks/use-auth-session";
 
 const NAV = [
   { to: "/", label: "Home" },
@@ -19,6 +20,8 @@ export function Header() {
   const [open, setOpen] = useState(false);
   const { theme, toggle } = useTheme();
   const { location } = useRouterState();
+  const { ready, session } = useAuthSession();
+  const showVaultLink = ready && session?.role === "admin";
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -83,6 +86,14 @@ export function Header() {
           >
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
+          {showVaultLink && (
+            <Link
+              to="/vault"
+              className="hidden sm:inline-flex group relative items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary hover:border-primary/50 hover:bg-primary/15 transition-all"
+            >
+              Vault
+            </Link>
+          )}
           <Link
             to="/contact"
             className="hidden sm:inline-flex group relative items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all glow-orange"
@@ -118,7 +129,17 @@ export function Header() {
                   {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                   Toggle theme
                 </button>
-                <Link to="/contact" className="rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">Book Consultation</Link>
+                <div className="flex items-center gap-2">
+                  {showVaultLink && (
+                    <Link
+                      to="/vault"
+                      className="rounded-md border border-primary/30 bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary"
+                    >
+                      Vault
+                    </Link>
+                  )}
+                  <Link to="/contact" className="rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">Book Consultation</Link>
+                </div>
               </div>
             </div>
           </motion.div>

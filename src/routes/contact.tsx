@@ -43,8 +43,8 @@ function ContactPage() {
               </div>
             </div>
             {[
-              { icon: Building2, t: "Security Operations Center", v: "soc@sentinel-ai.com" },
-              { icon: Mail, t: "Global Support", v: "support@sentinel-ai.com" },
+              { icon: Building2, t: "Security Operations Center", v: "soc@ip-protection.online" },
+              { icon: Mail, t: "Global Support", v: "support@ip-protection.online" },
               { icon: Phone, t: "Enterprise Sales", v: "+1 (415) 555-0199" },
               { icon: MapPin, t: "HQ", v: "San Francisco · London · Singapore" },
             ].map((c) => (
