@@ -1,0 +1,66 @@
+[
+  {
+    "id": "vid_001",
+    "title": "Internal Briefing",
+    "description": "Confidential media sample prepared for the secure vault experience.",
+    "thumbnail": "/storage/thumbnails/internal-briefing.svg",
+    "videoUrl": "/storage/videos/internal-briefing.mp4",
+    "storageProvider": "local",
+    "category": "Research",
+    "tags": ["internal", "secure", "briefing"],
+    "featured": true,
+    "sources": [
+      {
+        "label": "1080p",
+        "url": "/storage/videos/internal-briefing.mp4",
+        "mimeType": "video/mp4",
+        "provider": "local"
+      }
+    ],
+    "createdAt": "2026-05-29T00:00:00.000Z",
+    "updatedAt": "2026-05-29T00:00:00.000Z"
+  },
+  {
+    "id": "vid_002",
+    "title": "Response Drill",
+    "description": "Operational exercise footage for incident response teams and internal stakeholders.",
+    "thumbnail": "/storage/thumbnails/response-drill.svg",
+    "videoUrl": "/storage/videos/response-drill.webm",
+    "storageProvider": "local",
+    "category": "Operations",
+    "tags": ["drill", "response", "training"],
+    "featured": false,
+    "sources": [
+      {
+        "label": "720p",
+        "url": "/storage/videos/response-drill.webm",
+        "mimeType": "video/webm",
+        "provider": "local"
+      }
+    ],
+    "createdAt": "2026-05-29T00:00:00.000Z",
+    "updatedAt": "2026-05-29T00:00:00.000Z"
+  },
+  {
+    "id": "vid_003",
+    "title": "Market Intelligence",
+    "description": "A curated intelligence cut highlighting the current enterprise media distribution queue.",
+    "thumbnail": "/storage/thumbnails/market-intelligence.svg",
+    "videoUrl": "/storage/videos/market-intelligence.mp4",
+    "storageProvider": "local",
+    "category": "Distribution",
+    "tags": ["distribution", "insights", "featured"],
+    "featured": true,
+    "sources": [
+      {
+        "label": "1080p",
+        "url": "/storage/videos/market-intelligence.mp4",
+        "mimeType": "video/mp4",
+        "provider": "local"
+      }
+    ],
+    "createdAt": "2026-05-29T00:00:00.000Z",
+    "updatedAt": "2026-05-29T00:00:00.000Z"
+  }
+]
+
