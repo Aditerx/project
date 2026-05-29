@@ -38,3 +38,5 @@ dist-ssr
 storage/videos/*
 storage/thumbnails/*
 storage/metadata/*
+.env*
+.vercel
