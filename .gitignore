@@ -31,12 +31,10 @@ dist-ssr
 *.sln
 *.sw?
 
-.vercel
-.env*
-
 # Media storage
 storage/videos/*
 storage/thumbnails/*
 storage/metadata/*
+
 .env*
 .vercel
