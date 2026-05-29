@@ -4,6 +4,7 @@ import { createWriteStream } from "node:fs";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { bunnyStorageProvider } from "./bunny.server";
 
 import {
   createSeedThumbnailSvg,
@@ -104,7 +105,7 @@ async function streamFileToPath({
     },
   });
 
-  const source = Readable.fromWeb(file.stream());
+  const source = Readable.fromWeb(file.stream() as any);
   const destination = createWriteStream(tempPath, { flags: "wx" });
 
   try {
@@ -332,8 +333,10 @@ export async function createVideoFromForm(formData: FormData) {
   }
 
   const [uploadedVideo, uploadedThumbnail] = await Promise.all([
-    localStorageProvider.upload({ file: videoFile, kind: "video", hint: title }),
-    localStorageProvider.upload({ file: thumbnailFile, kind: "thumbnail", hint: title }),
+    // localStorageProvider.upload({ file: videoFile, kind: "video", hint: title }),
+    // localStorageProvider.upload({ file: thumbnailFile, kind: "thumbnail", hint: title }),
+    bunnyStorageProvider.upload({ file: videoFile, kind: "video", hint: title }),
+    bunnyStorageProvider.upload({ file: thumbnailFile, kind: "thumbnail", hint: title }),
   ]);
 
   const now = new Date().toISOString();
@@ -378,14 +381,16 @@ export async function updateVideoFromForm(id: string, formData: FormData) {
   let nextProvider = existing.storageProvider;
 
   if (videoFile) {
-    const uploaded = await localStorageProvider.upload({ file: videoFile, kind: "video", hint: title });
+    // const uploaded = await localStorageProvider.upload({ file: videoFile, kind: "video", hint: title });
+    const uploaded = await bunnyStorageProvider.upload({ file: videoFile, kind: "video", hint: title });
     nextVideoUrl = uploaded.url;
     nextProvider = uploaded.provider;
     await maybeDeleteIfLocal(existing.videoUrl);
   }
 
   if (thumbnailFile) {
-    const uploaded = await localStorageProvider.upload({ file: thumbnailFile, kind: "thumbnail", hint: title });
+    // const uploaded = await localStorageProvider.upload({ file: thumbnailFile, kind: "thumbnail", hint: title });
+    const uploaded = await bunnyStorageProvider.upload({ file: thumbnailFile, kind: "thumbnail", hint: title });
     nextThumbnailUrl = uploaded.url;
     await maybeDeleteIfLocal(existing.thumbnail);
   }
