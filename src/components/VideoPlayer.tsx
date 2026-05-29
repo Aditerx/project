@@ -1,12 +1,13 @@
-"use client";
-
 import "plyr/dist/plyr.css";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Plyr from "plyr";
 import { Download, Film, ShieldAlert } from "lucide-react";
 
 import type { VideoRecord } from "@/lib/media.types";
+
+type PlyrInstance = {
+  destroy: () => void;
+};
 
 export function VideoPlayer({
   video,
@@ -16,13 +17,24 @@ export function VideoPlayer({
   onProgress?: (progress: number) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const playerRef = useRef<Plyr | null>(null);
+  const playerRef = useRef<PlyrInstance | null>(null);
   const onProgressRef = useRef(onProgress);
   const [quality, setQuality] = useState(0);
   const [playbackError, setPlaybackError] = useState(false);
-  const sources = useMemo(() => video.sources?.length ? video.sources : [
-    { label: "Default", url: video.videoUrl, mimeType: "video/mp4", provider: video.storageProvider },
-  ], [video]);
+  const sources = useMemo(
+    () =>
+      video.sources?.length
+        ? video.sources
+        : [
+            {
+              label: "Default",
+              url: video.videoUrl,
+              mimeType: "video/mp4",
+              provider: video.storageProvider,
+            },
+          ],
+    [video],
+  );
   const selectedSource = sources[quality] ?? sources[0];
 
   useEffect(() => {
@@ -34,44 +46,63 @@ export function VideoPlayer({
   }, [video.id]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     const element = videoRef.current;
     if (!element) return;
 
-    // Plyr is initialised after the source element is mounted so the controls
-    // can attach to the correct DOM node for the current rendition.
-    const player = new Plyr(element, {
-      controls: [
-        "play-large",
-        "play",
-        "progress",
-        "current-time",
-        "mute",
-        "volume",
-        "captions",
-        "settings",
-        "pip",
-        "airplay",
-        "fullscreen",
-      ],
-      settings: ["speed", "quality"],
-      speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
-      clickToPlay: true,
-      keyboard: { focused: true, global: true },
-      tooltips: { controls: true, seek: true },
-    });
+    let cancelled = false;
+    let handleTimeUpdate: (() => void) | null = null;
 
-    playerRef.current = player;
-    setPlaybackError(false);
+    const initializePlayer = async () => {
+      // The Plyr package is loaded only after the component mounts on the
+      // client, which keeps SSR free from browser-only side effects.
+      const { default: Plyr } = await import("plyr");
+      if (cancelled || !videoRef.current) return;
 
-    const handleTimeUpdate = () => {
-      if (!element.duration || !onProgressRef.current) return;
-      onProgressRef.current(Math.round((element.currentTime / element.duration) * 100));
+      playerRef.current?.destroy();
+      const player = new Plyr(videoRef.current, {
+        controls: [
+          "play-large",
+          "play",
+          "progress",
+          "current-time",
+          "mute",
+          "volume",
+          "captions",
+          "settings",
+          "pip",
+          "airplay",
+          "fullscreen",
+        ],
+        settings: ["speed", "quality"],
+        speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
+        clickToPlay: true,
+        keyboard: { focused: true, global: true },
+        tooltips: { controls: true, seek: true },
+      });
+
+      playerRef.current = player;
+      setPlaybackError(false);
+
+      handleTimeUpdate = () => {
+        const mediaElement = videoRef.current;
+        if (!mediaElement?.duration || !onProgressRef.current) return;
+        onProgressRef.current(
+          Math.round((mediaElement.currentTime / mediaElement.duration) * 100),
+        );
+      };
+      videoRef.current.addEventListener("timeupdate", handleTimeUpdate);
     };
-    element.addEventListener("timeupdate", handleTimeUpdate);
+
+    void initializePlayer();
 
     return () => {
-      element.removeEventListener("timeupdate", handleTimeUpdate);
-      player.destroy();
+      cancelled = true;
+      if (handleTimeUpdate && videoRef.current) {
+        videoRef.current.removeEventListener("timeupdate", handleTimeUpdate);
+      }
+      playerRef.current?.destroy();
       playerRef.current = null;
     };
   }, [selectedSource.url]);
@@ -141,7 +172,15 @@ export function VideoPlayer({
             className="aspect-video w-full"
           >
             <source src={selectedSource.url} type={selectedSource.mimeType} />
-            {video.subtitleUrl && <track kind="subtitles" srcLang="en" src={video.subtitleUrl} label="English" default />}
+            {video.subtitleUrl && (
+              <track
+                kind="subtitles"
+                srcLang="en"
+                src={video.subtitleUrl}
+                label="English"
+                default
+              />
+            )}
           </video>
         )}
       </div>

@@ -1,5 +1,29 @@
 [
   {
+    "id": "vid_db64544b",
+    "title": "Thanh pho",
+    "description": "O day la o dau",
+    "thumbnail": "/storage/thumbnails/thanh-pho-a26ba42c-aef1-4442-8ec2-a909f17d5571.jpg",
+    "videoUrl": "/storage/videos/soc-con-e9ba3a50-6d6c-4269-b1fc-3d01f3873384.mp4",
+    "storageProvider": "local",
+    "category": "City, Drone",
+    "tags": [
+      "drone",
+      "scenery"
+    ],
+    "featured": true,
+    "sources": [
+      {
+        "label": "Primary",
+        "url": "/storage/videos/soc-con-e9ba3a50-6d6c-4269-b1fc-3d01f3873384.mp4",
+        "mimeType": "video/mp4",
+        "provider": "local"
+      }
+    ],
+    "createdAt": "2026-05-29T07:42:01.190Z",
+    "updatedAt": "2026-05-29T07:44:26.207Z"
+  },
+  {
     "id": "vid_001",
     "title": "Internal",
     "description": "Confidential media sample prepared for the secure experience.",
