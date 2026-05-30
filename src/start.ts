@@ -1,7 +1,6 @@
 import { createStart, createMiddleware } from "@tanstack/react-start";
 
 import { renderErrorPage } from "./lib/error-page";
-import { requestMiddleware } from "./lib/request-middleware.server";
 
 const errorMiddleware = createMiddleware().server(async ({ next }) => {
   try {
@@ -16,6 +15,11 @@ const errorMiddleware = createMiddleware().server(async ({ next }) => {
       headers: { "content-type": "text/html; charset=utf-8" },
     });
   }
+});
+
+const requestMiddleware = createMiddleware({ type: "request" }).server(async (options) => {
+  const { requestMiddleware } = await import("./lib/request-middleware.server");
+  return requestMiddleware.options.server!(options);
 });
 
 export const startInstance = createStart(() => ({

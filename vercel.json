@@ -2,6 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "bun install",
   "buildCommand": "bun run build",
-  "outputDirectory": "dist/client",
-  "framework": "vite"
+  "framework": "other",
+  "env": {
+    "NODE_ENV": "production"
+  }
 }

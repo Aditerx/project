@@ -1,37 +1,25 @@
-# IP Protection Main Project Documentation
+# IP Protection Architecture
 
-## Overview
+## Current Runtime
 
-IP Protection is an internal media intelligence platform layered onto the existing
-TanStack Start application. The public site remains the enterprise-facing
-marketing shell, while the hidden routes implement a secure media vault and an
-admin media distribution console.
+This project is a TanStack Start application deployed to Vercel.
 
-The implementation preserves the existing visual system:
+Build and deployment are driven by:
 
-- dark enterprise surfaces
-- orange glow accents
-- glassmorphism panels
-- motion-based reveals
-- responsive layouts already present in the codebase
+- `bun install`
+- `bun run build`
+- Vite 7
+- TanStack Start Vite plugin
+- Nitro Vercel output in `.vercel/output`
 
-## Architecture
+Vercel should deploy the generated `.vercel/output` build output. The app is
+not a Next.js app and is not a React Router SPA.
 
-The project is still a TanStack Start application, not a Next.js App Router app.
-That distinction matters because routing, middleware, and SSR are handled through
-TanStack Start primitives.
+## Routing
 
-Key layers:
+Routes are file-based TanStack routes under `src/routes`.
 
-1. Public marketing routes
-1. Hidden secure routes
-1. Request middleware
-1. Server-only auth and storage helpers
-1. Client-side sessionStorage state
-
-## Route Structure
-
-Public:
+Public routes:
 
 - `/`
 - `/about`
@@ -40,158 +28,108 @@ Public:
 - `/insights`
 - `/contact`
 
-Hidden:
+Hidden routes:
 
 - `/login`
 - `/vault`
 - `/dashboard`
 
-Hidden routes are:
+The generated route tree is `src/routeTree.gen.ts`.
 
-- excluded from the public nav and footer
-- marked `noindex, nofollow`
-- protected at the request boundary by middleware
-- rendered without the public header/footer shell
+## Server Entry And Middleware
 
-## Auth Flow
+The custom server entry is `src/server.ts`.
 
-### Login
+`src/start.ts` registers request middleware. Server-only request middleware is
+loaded dynamically from `src/lib/request-middleware.server.ts` so the client
+build does not import `.server.ts` modules.
 
-1. User submits username and password on `/login`
-1. The client sends credentials to `/api/auth/login`
-1. The server validates the password with `bcryptjs`
-1. The server creates a signed session cookie
-1. The client stores the same session object in `sessionStorage`
-1. The client redirects to `/vault` or `/dashboard`
+The request middleware handles:
 
-### Session persistence
+- `/api/auth/login`
+- `/api/auth/logout`
+- `/api/auth/session`
+- `/api/media`
+- `/api/media/:id`
+- hidden-route redirects for `/vault` and `/dashboard`
+- noindex and no-store headers for hidden routes
 
-- Refresh: session persists because `sessionStorage` survives page refresh in the same tab
-- Close tab/browser: `sessionStorage` clears, so the UI auto-logs out
-- Middleware still has a signed cookie for server-side route protection
+## Authentication
 
-### Roles
+Authentication currently uses:
 
-- `viewer`: access to `/vault`
-- `admin`: access to `/vault` and `/dashboard`
+- users stored in `storage/users/users.json`
+- server-side password verification with `bcryptjs`
+- signed session cookies for request protection
+- browser `sessionStorage` as the tab-scoped UI session copy
 
-## Middleware Logic
+The sessionStorage behavior is part of the current UI flow. It is not the
+deployment architecture.
 
-The request middleware owns three concerns:
+## Media Storage
 
-1. Static asset delivery from `/storage/*`
-1. API handling for `/api/auth/*` and `/api/media/*`
-1. Route protection for hidden pages
+New media uploads use Bunny through `bunnyStorageProvider` in
+`src/lib/bunny.server.ts`.
 
-Protection rules:
+Active upload paths:
 
-- Unauthenticated request to `/vault` or `/dashboard` -> redirect to `/login`
-- Viewer request to `/dashboard` -> redirect to `/vault`
-- Hidden routes get `X-Robots-Tag: noindex, nofollow`
+- `createVideoFromForm`
+- `updateVideoFromForm`
+- `bunnyStorageProvider.upload(...)`
 
-## Storage Flow
+The app still stores media metadata locally in:
 
-Local filesystem structure:
-
-- `storage/users/users.json`
 - `storage/metadata/videos.json`
-- `storage/videos/`
-- `storage/thumbnails/`
 
-The app uses a middleware-backed storage delivery layer so public media assets
-can be accessed via `/storage/videos/...` and `/storage/thumbnails/...` without
-exposing sensitive JSON files.
+Seed data and some legacy local cleanup helpers still exist in
+`src/lib/media.server.ts`, but new uploads are sent to Bunny, not to local disk.
 
-Sensitive files are blocked:
+## Bunny Configuration
 
-- `storage/users/*`
-- `storage/metadata/*`
+Bunny storage is configured through environment variables consumed by
+`src/lib/bunny.server.ts`.
 
-## Provider Abstraction
+Expected runtime values include:
 
-The current implementation uses a `LocalStorageProvider`, but the code is
-structured around the following interface:
+- Bunny storage zone
+- Bunny access key
+- Bunny CDN or storage host configuration
 
-```ts
-interface StorageProvider {
-  upload()
-  delete()
-  getUrl()
-}
-```
+Uploaded media records store the Bunny URL in the media catalog and the vault
+plays/downloads from that URL.
 
-That means Bunny.net, Cloudflare R2, AWS S3, Backblaze B2, and Wasabi can be
-added later without rewriting the dashboard or vault UI.
+## Vercel Deployment
 
-## Upload Flow
+`vite.config.ts` configures:
 
-Admin uploads are multipart form submissions.
+- `tanstackStart({ server: { entry: "./src/server.ts" } })`
+- `nitro({ preset: "vercel" })`
+- React plugin support
+- tsconfig path aliases
 
-Validation rules:
+`vercel.json` only defines install/build commands and framework mode. It does
+not override `outputDirectory`, because Nitro generates the Vercel Build Output
+API directory at `.vercel/output`.
 
-- Videos: MP4 or WebM
-- Thumbnails: JPG, PNG, WebP, or SVG
-- MIME type and extension both validated
-- Size limits enforced for videos and thumbnails
+Generated output includes:
 
-Storage behavior:
+- `.vercel/output/config.json`
+- `.vercel/output/static`
+- `.vercel/output/functions/__server.func/index.mjs`
 
-- video file uploaded first
-- thumbnail uploaded second
-- metadata written to `storage/metadata/videos.json`
-- old local files removed on replace and delete
+The Vercel route config sends unmatched requests to the generated server
+function, which allows `/` and all TanStack routes to SSR instead of returning
+Vercel-level 404s.
 
-## UI Notes
+## Obsolete Pieces Still Present
 
-### Login
+These are present in code or docs but are not the active upload architecture:
 
-- enterprise secure access aesthetic
-- subtle glass panels
-- orange accent styling
-- loading and error states
+- `LocalStorageProvider`
+- commented local upload calls
+- old `/storage/*` seed URLs
+- local file streaming helpers
+- migration notes that describe a future Bunny migration
 
-### Vault
-
-- search
-- categories
-- tags
-- featured assets
-- recently added assets
-- continue watching state stored in sessionStorage
-- Plyr-based playback
-- download support
-
-### Dashboard
-
-- admin-only CRUD
-- create/update/delete
-- file replacement
-- local media management
-
-## Cloud Migration Strategy
-
-The storage abstraction is already aligned with future cloud providers:
-
-- Bunny.net Storage + CDN
-- Cloudflare R2
-- AWS S3
-- Backblaze B2
-- Wasabi
-
-Migration strategy:
-
-1. Keep the metadata schema stable
-1. Swap `LocalStorageProvider` for a cloud-backed provider
-1. Generate signed URLs from the provider
-1. Update CDN URLs where needed
-1. Leave the vault and dashboard UI untouched
-
-## Maintenance Recommendations
-
-- Keep all auth logic server-side
-- Keep sessionStorage as the browser UX layer only
-- Never expose `storage/users` or `storage/metadata` publicly
-- Add new media providers behind the provider interface
-- Keep new public pages out of hidden route metadata and sitemap
-- Reuse the existing design tokens and motion patterns for future screens
-
+Do not treat those as the current deployment target. Bunny upload is already the
+active path for new media.

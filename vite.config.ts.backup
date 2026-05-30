@@ -1,7 +1,6 @@
+// @loveable:locked - DO NOT REGENERATE THIS FILE
 import { defineConfig } from 'vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
-import viteReact from '@vitejs/plugin-react'
-import { nitro } from 'nitro/vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
 export default defineConfig({
@@ -12,7 +11,11 @@ export default defineConfig({
         entry: './src/server.ts',
       },
     }),
-    nitro({ preset: 'vercel' }),
-    viteReact(),
   ],
+  // Nitro outputs to .vercel/output when preset is 'vercel'
+  // This is required for Vercel deployment
+  // @ts-ignore - Ignore type layer if your local nitro definition versions mismatch
+  nitro: {
+    preset: 'vercel',
+  },
 })
