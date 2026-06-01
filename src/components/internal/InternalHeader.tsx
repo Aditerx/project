@@ -5,7 +5,7 @@ import { useState } from "react";
 
 import { BRAND_NAME } from "@/lib/brand";
 import { fetchJson } from "@/lib/http";
-import { clearAuthSession, useAuthSession } from "@/hooks/use-auth-session";
+import { useAuthSession } from "@/hooks/use-auth-session";
 
 export function InternalHeader() {
   const router = useRouter();
@@ -20,10 +20,10 @@ export function InternalHeader() {
       // Logout is best-effort. We still clear local session state so the UI is
       // immediately revoked even if the network is briefly unavailable.
     } finally {
-      clearAuthSession();
       setSession(null);
       setIsLoggingOut(false);
-      router.replace("/login");
+      await router.invalidate();
+      await router.navigate({ to: "/login", replace: true });
     }
   };
 
@@ -81,4 +81,3 @@ export function InternalHeader() {
     </motion.header>
   );
 }
-

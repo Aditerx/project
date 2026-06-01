@@ -30,6 +30,23 @@ type MediaResponse = {
   };
 };
 
+type BunnyUploadTarget = {
+  provider: "bunny";
+  path: string;
+  filename: string;
+  uploadUrl: string;
+  publicUrl: string;
+  headers: Record<string, string>;
+};
+
+type UploadTargetsResponse = {
+  ok: true;
+  targets: {
+    video?: BunnyUploadTarget;
+    thumbnail?: BunnyUploadTarget;
+  };
+};
+
 function extractResponseError(text: string, fallback: string) {
   if (!text) return fallback;
 
@@ -41,21 +58,20 @@ function extractResponseError(text: string, fallback: string) {
   }
 }
 
-function uploadFormDataWithProgress<T>({
-  endpoint,
-  method,
-  body,
+function uploadFileToBunny({
+  file,
+  target,
   onProgress,
 }: {
-  endpoint: string;
-  method: "POST" | "PUT" | "PATCH";
-  body: FormData;
+  file: File;
+  target: BunnyUploadTarget;
   onProgress?: (progress: number) => void;
-}): Promise<T> {
+}): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open(method, endpoint);
+    xhr.open("PUT", target.uploadUrl);
     xhr.responseType = "text";
+    Object.entries(target.headers).forEach(([key, value]) => xhr.setRequestHeader(key, value));
 
     xhr.upload.onprogress = (event) => {
       if (!event.lengthComputable) return;
@@ -68,22 +84,21 @@ function uploadFormDataWithProgress<T>({
       if (xhr.status < 200 || xhr.status >= 300) {
         reject(
           new Error(
-            extractResponseError(responseText, xhr.statusText || `Request failed with status ${xhr.status}`),
+            extractResponseError(
+              responseText,
+              xhr.statusText || `Bunny upload failed with status ${xhr.status}`,
+            ),
           ),
         );
         return;
       }
 
-      try {
-        resolve((responseText ? JSON.parse(responseText) : null) as T);
-      } catch {
-        reject(new Error("Unable to parse the upload response."));
-      }
+      resolve();
     };
 
     xhr.onerror = () => reject(new Error("Network error while uploading."));
     xhr.onabort = () => reject(new Error("Upload cancelled."));
-    xhr.send(body);
+    xhr.send(file);
   });
 }
 
@@ -132,8 +147,9 @@ function DashboardContent() {
     void reload();
   }, []);
 
-  const videos = payload?.videos ?? [];
-  const selectedVideo = selectedId === "new" ? null : videos.find((video) => video.id === selectedId) ?? null;
+  const videos = useMemo(() => payload?.videos ?? [], [payload?.videos]);
+  const selectedVideo =
+    selectedId === "new" ? null : (videos.find((video) => video.id === selectedId) ?? null);
   const categories = useMemo(() => [...new Set(videos.map((video) => video.category))], [videos]);
 
   const handleDelete = async (video: VideoRecord) => {
@@ -176,8 +192,8 @@ function DashboardContent() {
               </h1>
               <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
                 Create, update, replace, and delete catalog entries without leaving the secure
-                environment. Local storage is the first provider; cloud providers can plug in
-                later through the same abstraction.
+                environment. Local storage is the first provider; cloud providers can plug in later
+                through the same abstraction.
               </p>
             </div>
 
@@ -189,7 +205,9 @@ function DashboardContent() {
                 { value: payload?.stats.tags ?? 0, label: "Tags" },
               ].map((stat) => (
                 <div key={stat.label} className="glass-card rounded-2xl border border-border p-4">
-                  <div className="font-display text-2xl font-bold text-foreground">{stat.value}</div>
+                  <div className="font-display text-2xl font-bold text-foreground">
+                    {stat.value}
+                  </div>
                   <div className="mt-1 text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
                     {stat.label}
                   </div>
@@ -222,21 +240,21 @@ function DashboardContent() {
             className="lg:col-span-4"
           >
             <AssetEditor
-            key={selectedVideo?.id ?? "new"}
-            sessionUser={session?.username ?? "admin"}
-            selectedVideo={selectedVideo}
-            isLoading={isLoading}
-            onSaved={async (message) => {
-              setStatusMessage(message);
-              setErrorMessage(null);
-              await reload();
-              setSelectedId("new");
-            }}
-            onError={(message) => {
-              setStatusMessage(null);
-              setErrorMessage(message);
-            }}
-          />
+              key={selectedVideo?.id ?? "new"}
+              sessionUser={session?.username ?? "admin"}
+              selectedVideo={selectedVideo}
+              isLoading={isLoading}
+              onSaved={async (message) => {
+                setStatusMessage(message);
+                setErrorMessage(null);
+                await reload();
+                setSelectedId("new");
+              }}
+              onError={(message) => {
+                setStatusMessage(null);
+                setErrorMessage(message);
+              }}
+            />
           </motion.div>
 
           <div className="lg:col-span-8">
@@ -288,7 +306,9 @@ function DashboardContent() {
                             ))}
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-sm text-muted-foreground">{video.category}</td>
+                        <td className="px-4 py-4 text-sm text-muted-foreground">
+                          {video.category}
+                        </td>
                         <td className="px-4 py-4 text-sm text-muted-foreground">
                           {video.storageProvider}
                         </td>
@@ -320,7 +340,10 @@ function DashboardContent() {
 
                     {!isLoading && videos.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                        <td
+                          colSpan={5}
+                          className="px-4 py-10 text-center text-sm text-muted-foreground"
+                        >
                           No assets are available yet. Use the create form to upload the first
                           internal video.
                         </td>
@@ -332,7 +355,8 @@ function DashboardContent() {
 
               <div className="mt-5 flex items-center gap-2 text-xs font-mono uppercase tracking-[0.2em] text-muted-foreground">
                 <AlertTriangle className="h-3.5 w-3.5 text-primary" />
-                Admin changes write directly to `storage/metadata/videos.json` and the local asset folders.
+                Admin changes write directly to `storage/metadata/videos.json` and the local asset
+                folders.
               </div>
             </div>
           </div>
@@ -369,17 +393,91 @@ function AssetEditor({
     try {
       const formData = new FormData(formRef.current);
       formData.set("featured", formData.get("featured") === "on" ? "true" : "false");
+      formData.set("uploadMode", "direct-bunny");
+
+      const title =
+        typeof formData.get("title") === "string" ? String(formData.get("title")) : "asset";
+      const videoFile =
+        formData.get("videoFile") instanceof File && (formData.get("videoFile") as File).size > 0
+          ? (formData.get("videoFile") as File)
+          : null;
+      const thumbnailFile =
+        formData.get("thumbnailFile") instanceof File &&
+        (formData.get("thumbnailFile") as File).size > 0
+          ? (formData.get("thumbnailFile") as File)
+          : null;
+
+      if (!selectedVideo && (!videoFile || !thumbnailFile)) {
+        throw new Error("A video file and thumbnail are required.");
+      }
+
+      formData.delete("videoFile");
+      formData.delete("thumbnailFile");
+
+      if (videoFile || thumbnailFile) {
+        const targetsResponse = await fetchJson<UploadTargetsResponse>(
+          "/api/media/upload-targets",
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              title,
+              video: videoFile
+                ? { name: videoFile.name, type: videoFile.type, size: videoFile.size }
+                : null,
+              thumbnail: thumbnailFile
+                ? { name: thumbnailFile.name, type: thumbnailFile.type, size: thumbnailFile.size }
+                : null,
+            }),
+          },
+        );
+
+        const uploadJobs = [
+          videoFile && targetsResponse.targets.video
+            ? { field: "video", file: videoFile, target: targetsResponse.targets.video }
+            : null,
+          thumbnailFile && targetsResponse.targets.thumbnail
+            ? { field: "thumbnail", file: thumbnailFile, target: targetsResponse.targets.thumbnail }
+            : null,
+        ].filter(Boolean) as Array<{
+          field: "video" | "thumbnail";
+          file: File;
+          target: BunnyUploadTarget;
+        }>;
+
+        let completedBytes = 0;
+        const totalBytes = uploadJobs.reduce((sum, job) => sum + job.file.size, 0);
+        setUploadProgress(0);
+
+        for (const job of uploadJobs) {
+          await uploadFileToBunny({
+            file: job.file,
+            target: job.target,
+            onProgress: (fileProgress) => {
+              const fileBytes = Math.round((job.file.size * fileProgress) / 100);
+              setUploadProgress(
+                Math.min(99, Math.round(((completedBytes + fileBytes) / totalBytes) * 100)),
+              );
+            },
+          });
+          completedBytes += job.file.size;
+          const prefix = job.field;
+          formData.set(`${prefix}Path`, job.target.path);
+          formData.set(`${prefix}Url`, job.target.publicUrl);
+          formData.set(`${prefix}Filename`, job.target.filename);
+          formData.set(`${prefix}Bytes`, String(job.file.size));
+          formData.set(`${prefix}MimeType`, job.file.type);
+        }
+      }
 
       const endpoint = selectedVideo ? `/api/media/${selectedVideo.id}` : "/api/media";
       const method = selectedVideo ? "PUT" : "POST";
-      setUploadProgress(0);
-      const response = await uploadFormDataWithProgress<{ ok: true; video: VideoRecord }>({
-        endpoint,
+      const response = await fetchJson<{ ok: true; video: VideoRecord }>(endpoint, {
         method,
         body: formData,
-        onProgress: setUploadProgress,
       });
 
+      setUploadProgress(100);
       await onSaved(
         `${selectedVideo ? "Updated" : "Created"} ${response.video.title} successfully.`,
       );
@@ -525,14 +623,19 @@ function AssetEditor({
 
         <div className="flex items-center justify-between gap-3">
           <div className="text-xs text-muted-foreground">
-            Signed in as <span className="font-mono uppercase tracking-wider text-primary">{sessionUser}</span>
+            Signed in as{" "}
+            <span className="font-mono uppercase tracking-wider text-primary">{sessionUser}</span>
           </div>
           <button
             type="submit"
             disabled={isSubmitting || isLoading}
             className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-wait disabled:opacity-70"
           >
-            {selectedVideo ? <PencilLine className="h-4 w-4" /> : <PlusCircle className="h-4 w-4" />}
+            {selectedVideo ? (
+              <PencilLine className="h-4 w-4" />
+            ) : (
+              <PlusCircle className="h-4 w-4" />
+            )}
             {isSubmitting ? "Saving..." : selectedVideo ? "Update asset" : "Create asset"}
           </button>
         </div>

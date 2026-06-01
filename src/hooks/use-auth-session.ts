@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import type { SessionUser } from "@/lib/session";
 import { SESSION_STORAGE_KEY } from "@/lib/session";
@@ -35,34 +35,60 @@ export function clearAuthSession() {
   window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
 }
 
+let currentSession: SessionUser | null = null;
+let initialized = false;
+const listeners = new Set<() => void>();
+
+function emitChange() {
+  listeners.forEach((listener) => listener());
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function initializeSession() {
+  if (initialized) return;
+  currentSession = readAuthSession();
+  initialized = true;
+}
+
+function setStoredSession(next: SessionUser | null) {
+  initialized = true;
+  currentSession = next;
+  if (next) {
+    writeAuthSession(next);
+  } else {
+    clearAuthSession();
+  }
+  emitChange();
+}
+
 export function useAuthSession() {
-  const [session, setSession] = useState<SessionUser | null>(null);
-  const [ready, setReady] = useState(false);
+  const session = useSyncExternalStore(
+    subscribe,
+    () => currentSession,
+    () => null,
+  );
+  const ready = useSyncExternalStore(
+    subscribe,
+    () => initialized,
+    () => false,
+  );
 
   useEffect(() => {
     // We intentionally wait until mount before reading sessionStorage. This
     // prevents a server/client mismatch and lets hidden routes render a neutral
     // loading shell until the browser confirms who is actually signed in.
-    const current = readAuthSession();
-    setSession(current);
-    setReady(true);
+    initializeSession();
+    emitChange();
   }, []);
 
   return {
     session,
     ready,
-    setSession: (next: SessionUser | null) => {
-      setSession(next);
-      if (next) {
-        writeAuthSession(next);
-      } else {
-        clearAuthSession();
-      }
-    },
-    clearSession: () => {
-      setSession(null);
-      clearAuthSession();
-    },
+    setSession: setStoredSession,
+    clearSession: () => setStoredSession(null),
   };
 }
-

@@ -59,7 +59,8 @@ function LoginPage() {
       });
 
       setSession(result.session);
-      router.replace(result.redirectTo);
+      await router.invalidate();
+      await router.navigate({ to: result.redirectTo, replace: true });
     } catch (authError) {
       setError(authError instanceof Error ? authError.message : "Unable to sign in.");
     } finally {
@@ -99,7 +100,9 @@ function LoginPage() {
               { value: "middleware", label: "route protection" },
             ].map((item) => (
               <div key={item.label} className="glass-card rounded-2xl border border-border p-4">
-                <div className="font-display text-xl font-semibold text-foreground">{item.value}</div>
+                <div className="font-display text-xl font-semibold text-foreground">
+                  {item.value}
+                </div>
                 <div className="mt-1 text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
                   {item.label}
                 </div>
@@ -135,7 +138,9 @@ function LoginPage() {
                 <div className="mt-2 rounded-xl border border-border bg-card/60 px-4 py-3">
                   <input
                     value={form.username}
-                    onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, username: event.target.value }))
+                    }
                     autoComplete="username"
                     required
                     className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
@@ -152,7 +157,9 @@ function LoginPage() {
                   <Lock className="h-4 w-4 shrink-0 text-primary" />
                   <input
                     value={form.password}
-                    onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, password: event.target.value }))
+                    }
                     type={showPassword ? "text" : "password"}
                     autoComplete="current-password"
                     required
@@ -181,7 +188,11 @@ function LoginPage() {
                 disabled={isSubmitting || !ready}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-wait disabled:opacity-70"
               >
-                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                {isSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowRight className="h-4 w-4" />
+                )}
                 {isSubmitting ? "Verifying credentials..." : "Enter Vault"}
               </button>
             </form>
@@ -189,15 +200,21 @@ function LoginPage() {
             <div className="mt-6 grid gap-3 rounded-2xl border border-border bg-secondary/40 p-4 text-xs text-muted-foreground">
               <div className="flex items-center justify-between gap-3">
                 <span className="font-mono uppercase tracking-wider">Session strategy</span>
-                <span className="font-mono uppercase tracking-wider text-primary">sessionStorage</span>
+                <span className="font-mono uppercase tracking-wider text-primary">
+                  sessionStorage
+                </span>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="font-mono uppercase tracking-wider">Transport security</span>
-                <span className="font-mono uppercase tracking-wider text-primary">signed cookie</span>
+                <span className="font-mono uppercase tracking-wider text-primary">
+                  signed cookie
+                </span>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="font-mono uppercase tracking-wider">Roles</span>
-                <span className="font-mono uppercase tracking-wider text-primary">admin / viewer</span>
+                <span className="font-mono uppercase tracking-wider text-primary">
+                  admin / viewer
+                </span>
               </div>
             </div>
           </div>

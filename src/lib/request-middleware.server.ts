@@ -1,22 +1,19 @@
 import { createMiddleware } from "@tanstack/react-start";
 
 import { BRAND_NAME } from "./brand";
+import { clearSessionCookie, getSessionFromRequest, loginWithPassword } from "./auth.server";
+import { ensureStorageLayout, resolveStoragePath } from "./storage.server";
 import {
-  clearSessionCookie,
-  getSessionFromRequest,
-  loginWithPassword,
-} from "./auth.server";
-import {
-  ensureStorageLayout,
-  resolveStoragePath,
-} from "./storage.server";
-import {
+  createVideoFromUploadedAssets,
   createVideoFromForm,
   deleteVideoById,
   getVaultStats,
   listVideos,
+  updateVideoFromUploadedAssets,
   updateVideoFromForm,
+  validateUploadCandidate,
 } from "./media.server";
+import { createBunnyUploadTarget } from "./bunny.server";
 
 function jsonResponse(payload: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(payload, null, 2), {
@@ -34,7 +31,12 @@ function redirectResponse(request: Request, location: string) {
 }
 
 function isProtectedPath(pathname: string) {
-  return pathname === "/vault" || pathname === "/dashboard" || pathname.startsWith("/vault/") || pathname.startsWith("/dashboard/");
+  return (
+    pathname === "/vault" ||
+    pathname === "/dashboard" ||
+    pathname.startsWith("/vault/") ||
+    pathname.startsWith("/dashboard/")
+  );
 }
 
 function isHiddenRoute(pathname: string) {
@@ -97,6 +99,62 @@ async function handleAuthSession(request: Request) {
   return jsonResponse({ ok: true, session });
 }
 
+type UploadCandidate = {
+  name?: string;
+  type?: string;
+  size?: number;
+};
+
+async function handleUploadTargetsRequest(request: Request) {
+  const session = getSessionFromRequest(request);
+  if (!session) {
+    return jsonResponse({ ok: false, error: "Authentication required." }, { status: 401 });
+  }
+  if (session.role !== "admin") {
+    return jsonResponse({ ok: false, error: "Admin access required." }, { status: 403 });
+  }
+
+  const body = (await request.json()) as {
+    title?: string;
+    video?: UploadCandidate | null;
+    thumbnail?: UploadCandidate | null;
+  };
+  const title = typeof body.title === "string" ? body.title : "asset";
+  const targets: Record<string, ReturnType<typeof createBunnyUploadTarget>> = {};
+
+  if (body.video) {
+    validateUploadCandidate({
+      kind: "video",
+      fileName: body.video.name ?? "",
+      mimeType: body.video.type ?? "",
+      bytes: body.video.size ?? 0,
+    });
+    targets.video = createBunnyUploadTarget({
+      fileName: body.video.name ?? "video.mp4",
+      fileType: body.video.type ?? "application/octet-stream",
+      kind: "video",
+      hint: title,
+    });
+  }
+
+  if (body.thumbnail) {
+    validateUploadCandidate({
+      kind: "thumbnail",
+      fileName: body.thumbnail.name ?? "",
+      mimeType: body.thumbnail.type ?? "",
+      bytes: body.thumbnail.size ?? 0,
+    });
+    targets.thumbnail = createBunnyUploadTarget({
+      fileName: body.thumbnail.name ?? "thumbnail.png",
+      fileType: body.thumbnail.type ?? "application/octet-stream",
+      kind: "thumbnail",
+      hint: title,
+    });
+  }
+
+  return jsonResponse({ ok: true, targets });
+}
+
 async function handleMediaRequest(request: Request, pathname: string) {
   const session = getSessionFromRequest(request);
   if (!session) {
@@ -118,7 +176,11 @@ async function handleMediaRequest(request: Request, pathname: string) {
       return jsonResponse({ ok: false, error: "Admin access required." }, { status: 403 });
     }
     const formData = await request.formData();
-    const video = await createVideoFromForm(formData);
+    const uploadMode = formData.get("uploadMode");
+    const video =
+      uploadMode === "direct-bunny"
+        ? await createVideoFromUploadedAssets(formData)
+        : await createVideoFromForm(formData);
     return jsonResponse({ ok: true, video }, { status: 201 });
   }
 
@@ -131,7 +193,11 @@ async function handleMediaRequest(request: Request, pathname: string) {
       return jsonResponse({ ok: false, error: "Admin access required." }, { status: 403 });
     }
     const formData = await request.formData();
-    const video = await updateVideoFromForm(id, formData);
+    const uploadMode = formData.get("uploadMode");
+    const video =
+      uploadMode === "direct-bunny"
+        ? await updateVideoFromUploadedAssets(id, formData)
+        : await updateVideoFromForm(id, formData);
     return jsonResponse({ ok: true, video });
   }
 
@@ -160,6 +226,10 @@ export const requestMiddleware = createMiddleware({ type: "request" }).server(
 
     if (pathname === "/api/auth/session" && request.method === "GET") {
       return handleAuthSession(request);
+    }
+
+    if (pathname === "/api/media/upload-targets" && request.method === "POST") {
+      return handleUploadTargetsRequest(request);
     }
 
     if (pathname === "/api/media" || pathname.startsWith("/api/media/")) {

@@ -4,6 +4,7 @@ import { createWriteStream } from "node:fs";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { bunnyStorageProvider } from "./bunny.server";
 
 import {
@@ -18,10 +19,7 @@ import {
   STORAGE_METADATA_FILE,
 } from "./storage.server";
 
-import type {
-  MediaStorageProviderName,
-  VideoRecord,
-} from "./media.types";
+import type { MediaStorageProviderName, VideoRecord } from "./media.types";
 
 export interface StorageUploadInput {
   file: File;
@@ -46,10 +44,13 @@ export interface StorageProvider {
 }
 
 const DEFAULT_MAX_VIDEO_BYTES = 10 * 1024 * 1024 * 1024;
-const configuredMaxVideoBytes = Number(process.env.MEDIA_MAX_VIDEO_BYTES ?? DEFAULT_MAX_VIDEO_BYTES);
-const MAX_VIDEO_BYTES = Number.isFinite(configuredMaxVideoBytes) && configuredMaxVideoBytes > 0
-  ? configuredMaxVideoBytes
-  : DEFAULT_MAX_VIDEO_BYTES;
+const configuredMaxVideoBytes = Number(
+  process.env.MEDIA_MAX_VIDEO_BYTES ?? DEFAULT_MAX_VIDEO_BYTES,
+);
+const MAX_VIDEO_BYTES =
+  Number.isFinite(configuredMaxVideoBytes) && configuredMaxVideoBytes > 0
+    ? configuredMaxVideoBytes
+    : DEFAULT_MAX_VIDEO_BYTES;
 const MAX_THUMBNAIL_BYTES = 1024 * 1024 * 10;
 const ALLOWED_VIDEO_TYPES = new Set(["video/mp4", "video/webm"]);
 const ALLOWED_VIDEO_EXTENSIONS = new Set([".mp4", ".webm"]);
@@ -105,7 +106,7 @@ async function streamFileToPath({
     },
   });
 
-  const source = Readable.fromWeb(file.stream() as any);
+  const source = Readable.fromWeb(file.stream() as unknown as NodeReadableStream<Uint8Array>);
   const destination = createWriteStream(tempPath, { flags: "wx" });
 
   try {
@@ -141,7 +142,9 @@ export class LocalStorageProvider implements StorageProvider {
       }
     }
 
-    const safeBaseName = normalizeSafeFileName(hint || path.basename(file.name, extension) || "asset");
+    const safeBaseName = normalizeSafeFileName(
+      hint || path.basename(file.name, extension) || "asset",
+    );
     const uniqueName = `${safeBaseName || "asset"}-${crypto.randomUUID()}${extension || (kind === "video" ? ".mp4" : ".png")}`;
     const targetPath = resolveStoragePath(kind === "video" ? "videos" : "thumbnails", uniqueName);
 
@@ -166,7 +169,8 @@ export class LocalStorageProvider implements StorageProvider {
     try {
       await unlink(filePath);
     } catch (error) {
-      const code = error && typeof error === "object" ? (error as { code?: string }).code : undefined;
+      const code =
+        error && typeof error === "object" ? (error as { code?: string }).code : undefined;
       if (code !== "ENOENT") {
         throw error;
       }
@@ -196,35 +200,58 @@ function seedVideos() {
       category: "Research",
       tags: ["internal", "secure", "briefing"],
       featured: true,
-      sources: [{ label: "1080p", url: "/storage/videos/internal-briefing.mp4", mimeType: "video/mp4", provider: "local" as const }],
+      sources: [
+        {
+          label: "1080p",
+          url: "/storage/videos/internal-briefing.mp4",
+          mimeType: "video/mp4",
+          provider: "local" as const,
+        },
+      ],
       createdAt: now,
       updatedAt: now,
     },
     {
       id: "vid_002",
       title: "Response Drill",
-      description: "Operational exercise footage for incident response teams and internal stakeholders.",
+      description:
+        "Operational exercise footage for incident response teams and internal stakeholders.",
       thumbnail: "/storage/thumbnails/response-drill.svg",
       videoUrl: "/storage/videos/response-drill.webm",
       storageProvider: "local" as const,
       category: "Operations",
       tags: ["drill", "response", "training"],
       featured: false,
-      sources: [{ label: "720p", url: "/storage/videos/response-drill.webm", mimeType: "video/webm", provider: "local" as const }],
+      sources: [
+        {
+          label: "720p",
+          url: "/storage/videos/response-drill.webm",
+          mimeType: "video/webm",
+          provider: "local" as const,
+        },
+      ],
       createdAt: now,
       updatedAt: now,
     },
     {
       id: "vid_003",
       title: "Market Intelligence",
-      description: "A curated intelligence cut highlighting the current enterprise media distribution queue.",
+      description:
+        "A curated intelligence cut highlighting the current enterprise media distribution queue.",
       thumbnail: "/storage/thumbnails/market-intelligence.svg",
       videoUrl: "/storage/videos/market-intelligence.mp4",
       storageProvider: "local" as const,
       category: "Distribution",
       tags: ["distribution", "insights", "featured"],
       featured: true,
-      sources: [{ label: "1080p", url: "/storage/videos/market-intelligence.mp4", mimeType: "video/mp4", provider: "local" as const }],
+      sources: [
+        {
+          label: "1080p",
+          url: "/storage/videos/market-intelligence.mp4",
+          mimeType: "video/mp4",
+          provider: "local" as const,
+        },
+      ],
       createdAt: now,
       updatedAt: now,
     },
@@ -246,7 +273,11 @@ export async function ensureMediaSeed() {
       await Promise.all([
         seedThumbnailIfMissing("internal-briefing.svg", "Internal Briefing", "Secure vault seed"),
         seedThumbnailIfMissing("response-drill.svg", "Response Drill", "Ops exercise seed"),
-        seedThumbnailIfMissing("market-intelligence.svg", "Market Intelligence", "Distribution seed"),
+        seedThumbnailIfMissing(
+          "market-intelligence.svg",
+          "Market Intelligence",
+          "Distribution seed",
+        ),
       ]);
 
       if (!(await fileExists(STORAGE_METADATA_FILE))) {
@@ -270,7 +301,9 @@ async function writeMediaCatalog(videos: VideoRecord[]) {
 }
 
 export function getCategoryBuckets(videos: VideoRecord[]) {
-  return [...new Set(videos.map((video) => video.category).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  return [...new Set(videos.map((video) => video.category).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b),
+  );
 }
 
 export function getTagBuckets(videos: VideoRecord[]) {
@@ -303,6 +336,65 @@ function readString(formData: FormData, key: string, fallback = "") {
 function extractFile(formData: FormData, key: string) {
   const value = formData.get(key);
   return value instanceof File && value.size > 0 ? value : null;
+}
+
+function readNumber(formData: FormData, key: string, fallback = 0) {
+  const value = formData.get(key);
+  if (typeof value !== "string") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function validateUploadedAsset({
+  kind,
+  url,
+  path: assetPath,
+  mimeType,
+  bytes,
+}: {
+  kind: "video" | "thumbnail";
+  url: string;
+  path: string;
+  mimeType: string;
+  bytes: number;
+}) {
+  const extension = path.extname(assetPath).toLowerCase();
+
+  if (!url || !assetPath || !mimeType || bytes <= 0) {
+    throw new Error(`${kind === "video" ? "Video" : "Thumbnail"} upload metadata is missing.`);
+  }
+
+  if (kind === "video") {
+    if (!ALLOWED_VIDEO_TYPES.has(mimeType) || !ALLOWED_VIDEO_EXTENSIONS.has(extension)) {
+      throw new Error("Only MP4 and WebM video uploads are allowed.");
+    }
+    if (bytes > MAX_VIDEO_BYTES) {
+      throw new Error(`Video files must be ${describeLimit(MAX_VIDEO_BYTES)} or smaller.`);
+    }
+    return;
+  }
+
+  if (!ALLOWED_THUMBNAIL_TYPES.has(mimeType) || !ALLOWED_THUMBNAIL_EXTENSIONS.has(extension)) {
+    throw new Error("Only JPG, PNG, WebP, or SVG thumbnail uploads are allowed.");
+  }
+  if (bytes > MAX_THUMBNAIL_BYTES) {
+    throw new Error("Thumbnail files must be 10 MB or smaller.");
+  }
+}
+
+export function validateUploadCandidate({
+  kind,
+  fileName,
+  mimeType,
+  bytes,
+}: {
+  kind: "video" | "thumbnail";
+  fileName: string;
+  mimeType: string;
+  bytes: number;
+}) {
+  const extension = path.extname(fileName).toLowerCase();
+  validateUploadedAsset({ kind, url: "pending", path: `pending${extension}`, mimeType, bytes });
 }
 
 async function maybeDeleteIfLocal(url: string) {
@@ -351,7 +443,72 @@ export async function createVideoFromForm(formData: FormData) {
     tags,
     featured,
     sources: [
-      { label: "Primary", url: uploadedVideo.url, mimeType: uploadedVideo.mimeType, provider: uploadedVideo.provider },
+      {
+        label: "Primary",
+        url: uploadedVideo.url,
+        mimeType: uploadedVideo.mimeType,
+        provider: uploadedVideo.provider,
+      },
+    ],
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const videos = await listVideos();
+  videos.unshift(video);
+  await writeMediaCatalog(videos);
+  return video;
+}
+
+export async function createVideoFromUploadedAssets(formData: FormData) {
+  const title = readString(formData, "title");
+  const description = readString(formData, "description");
+  const category = readString(formData, "category");
+  const tags = parseTags(formData.get("tags"));
+  const featured = readString(formData, "featured") === "true";
+
+  if (!title || !description || !category) {
+    throw new Error("Title, description, and category are required.");
+  }
+
+  const uploadedVideo = {
+    provider: "bunny" as const,
+    path: readString(formData, "videoPath"),
+    url: readString(formData, "videoUrl"),
+    filename: readString(formData, "videoFilename"),
+    bytes: readNumber(formData, "videoBytes"),
+    mimeType: readString(formData, "videoMimeType"),
+  };
+  const uploadedThumbnail = {
+    provider: "bunny" as const,
+    path: readString(formData, "thumbnailPath"),
+    url: readString(formData, "thumbnailUrl"),
+    filename: readString(formData, "thumbnailFilename"),
+    bytes: readNumber(formData, "thumbnailBytes"),
+    mimeType: readString(formData, "thumbnailMimeType"),
+  };
+
+  validateUploadedAsset({ kind: "video", ...uploadedVideo });
+  validateUploadedAsset({ kind: "thumbnail", ...uploadedThumbnail });
+
+  const now = new Date().toISOString();
+  const video: VideoRecord = {
+    id: `vid_${crypto.randomUUID().slice(0, 8)}`,
+    title,
+    description,
+    thumbnail: uploadedThumbnail.url,
+    videoUrl: uploadedVideo.url,
+    storageProvider: uploadedVideo.provider,
+    category,
+    tags,
+    featured,
+    sources: [
+      {
+        label: "Primary",
+        url: uploadedVideo.url,
+        mimeType: uploadedVideo.mimeType,
+        provider: uploadedVideo.provider,
+      },
     ],
     createdAt: now,
     updatedAt: now,
@@ -382,7 +539,11 @@ export async function updateVideoFromForm(id: string, formData: FormData) {
 
   if (videoFile) {
     // const uploaded = await localStorageProvider.upload({ file: videoFile, kind: "video", hint: title });
-    const uploaded = await bunnyStorageProvider.upload({ file: videoFile, kind: "video", hint: title });
+    const uploaded = await bunnyStorageProvider.upload({
+      file: videoFile,
+      kind: "video",
+      hint: title,
+    });
     nextVideoUrl = uploaded.url;
     nextProvider = uploaded.provider;
     await maybeDeleteIfLocal(existing.videoUrl);
@@ -390,7 +551,11 @@ export async function updateVideoFromForm(id: string, formData: FormData) {
 
   if (thumbnailFile) {
     // const uploaded = await localStorageProvider.upload({ file: thumbnailFile, kind: "thumbnail", hint: title });
-    const uploaded = await bunnyStorageProvider.upload({ file: thumbnailFile, kind: "thumbnail", hint: title });
+    const uploaded = await bunnyStorageProvider.upload({
+      file: thumbnailFile,
+      kind: "thumbnail",
+      hint: title,
+    });
     nextThumbnailUrl = uploaded.url;
     await maybeDeleteIfLocal(existing.thumbnail);
   }
@@ -413,12 +578,89 @@ export async function updateVideoFromForm(id: string, formData: FormData) {
   return updated;
 }
 
+export async function updateVideoFromUploadedAssets(id: string, formData: FormData) {
+  const videos = await listVideos();
+  const existing = videos.find((video) => video.id === id);
+  if (!existing) throw new Error("Video record not found.");
+
+  const title = readString(formData, "title", existing.title);
+  const description = readString(formData, "description", existing.description);
+  const category = readString(formData, "category", existing.category);
+  const tags = parseTags(formData.get("tags"));
+  const featured = readString(formData, "featured") === "true";
+
+  let nextVideoUrl = existing.videoUrl;
+  let nextThumbnailUrl = existing.thumbnail;
+  let nextProvider = existing.storageProvider;
+  let nextSources = existing.sources;
+
+  const videoPath = readString(formData, "videoPath");
+  if (videoPath) {
+    const uploadedVideo = {
+      provider: "bunny" as const,
+      path: videoPath,
+      url: readString(formData, "videoUrl"),
+      filename: readString(formData, "videoFilename"),
+      bytes: readNumber(formData, "videoBytes"),
+      mimeType: readString(formData, "videoMimeType"),
+    };
+    validateUploadedAsset({ kind: "video", ...uploadedVideo });
+    nextVideoUrl = uploadedVideo.url;
+    nextProvider = uploadedVideo.provider;
+    nextSources = [
+      {
+        label: "Primary",
+        url: uploadedVideo.url,
+        mimeType: uploadedVideo.mimeType,
+        provider: uploadedVideo.provider,
+      },
+    ];
+    await maybeDeleteIfLocal(existing.videoUrl);
+  }
+
+  const thumbnailPath = readString(formData, "thumbnailPath");
+  if (thumbnailPath) {
+    const uploadedThumbnail = {
+      provider: "bunny" as const,
+      path: thumbnailPath,
+      url: readString(formData, "thumbnailUrl"),
+      filename: readString(formData, "thumbnailFilename"),
+      bytes: readNumber(formData, "thumbnailBytes"),
+      mimeType: readString(formData, "thumbnailMimeType"),
+    };
+    validateUploadedAsset({ kind: "thumbnail", ...uploadedThumbnail });
+    nextThumbnailUrl = uploadedThumbnail.url;
+    await maybeDeleteIfLocal(existing.thumbnail);
+  }
+
+  const updated: VideoRecord = {
+    ...existing,
+    title,
+    description,
+    category,
+    tags: tags.length > 0 ? tags : existing.tags,
+    featured,
+    thumbnail: nextThumbnailUrl,
+    videoUrl: nextVideoUrl,
+    storageProvider: nextProvider,
+    sources: nextSources,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const nextVideos = videos.map((video) => (video.id === id ? updated : video));
+  await writeMediaCatalog(nextVideos);
+  return updated;
+}
+
 export async function deleteVideoById(id: string) {
   const videos = await listVideos();
   const existing = videos.find((video) => video.id === id);
   if (!existing) throw new Error("Video record not found.");
 
-  await Promise.all([maybeDeleteIfLocal(existing.videoUrl), maybeDeleteIfLocal(existing.thumbnail)]);
+  await Promise.all([
+    maybeDeleteIfLocal(existing.videoUrl),
+    maybeDeleteIfLocal(existing.thumbnail),
+  ]);
   const remaining = videos.filter((video) => video.id !== id);
   await writeMediaCatalog(remaining);
   return existing;
